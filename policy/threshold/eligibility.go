@@ -1,30 +1,6 @@
 package threshold
 
-import (
-	"context"
-
-	"github.com/haha-systems/qac"
-)
-
-// Decide evaluates request eligibility. Threshold scoring is added separately.
-func (policy *Policy) Decide(_ context.Context, request qac.Request) (qac.Decision, error) {
-	if err := qac.ValidateRequest(request); err != nil {
-		return qac.Decision{}, err
-	}
-
-	eligibility := policy.eligibility(request)
-	decision := qac.Decision{
-		Action:      qac.ActionContinue,
-		From:        request.Context.CurrentResource,
-		To:          request.Context.CurrentResource,
-		Eligibility: eligibility,
-	}
-	if !anyEligible(eligibility) {
-		decision.Action = qac.ActionStop
-		decision.To = ""
-	}
-	return decision, nil
-}
+import "github.com/haha-systems/qac"
 
 func (policy *Policy) eligibility(request qac.Request) []qac.Eligibility {
 	result := make([]qac.Eligibility, 0, len(request.Resources))
