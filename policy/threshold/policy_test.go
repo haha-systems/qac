@@ -96,6 +96,25 @@ func TestCurrentIneligibleStops(t *testing.T) {
 	assertDecision(t, policy, request, qac.ActionStop, "")
 }
 
+// This fails if replacement mode treats an outside-hierarchy current resource as index zero.
+func TestCurrentOutsideHierarchyStopsBeforeReplacement(t *testing.T) {
+	for _, mode := range []threshold.IneligibleCurrentPolicy{
+		threshold.IneligibleCurrentNearestEligible,
+		threshold.IneligibleCurrentLeastCostEligible,
+	} {
+		t.Run(string(mode), func(t *testing.T) {
+			policy := mustPolicy(t, threshold.Config{
+				Hierarchy:           []string{"wraith", "shade"},
+				OnCurrentIneligible: mode,
+			})
+			decision := assertAction(t, policy, generatedValidRequest("veil"), qac.ActionStop)
+			if decision.To != "" || !hasReason(decision.Eligibility, "veil", "not in hierarchy") {
+				t.Fatalf("decision = %#v", decision)
+			}
+		})
+	}
+}
+
 // This fails if cancellation is delayed until after request validation.
 func TestDecideReturnsCanceledContextUnchanged(t *testing.T) {
 	policy := mustPolicy(t, threshold.Config{Hierarchy: []string{"wraith", "shade"}})
@@ -113,8 +132,8 @@ func TestDecideReturnsCanceledContextUnchanged(t *testing.T) {
 // This fails if evaluations on adjacent levels can cause an oscillating transition.
 func TestHysteresisPreventsOscillation(t *testing.T) {
 	policy := mustPolicy(t, threshold.Config{Hierarchy: []string{"wraith", "shade", "veil"}})
-	assertDecision(t, policy, requestWithContext("shade", .60, .60, .60, .60, 0), qac.ActionContinue, "shade")
-	assertDecision(t, policy, requestWithContext("veil", .60, .60, .60, .60, 0), qac.ActionContinue, "veil")
+	assertDecision(t, policy, requestWithContext("shade", .70, .70, .70, .70, 0), qac.ActionContinue, "shade")
+	assertDecision(t, policy, requestWithContext("veil", .70, .70, .70, .70, 0), qac.ActionContinue, "veil")
 }
 
 func TestFactorsSumToScore(t *testing.T) {

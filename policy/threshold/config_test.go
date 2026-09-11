@@ -79,7 +79,8 @@ func TestDefaultThresholdsPreserveEscalationAndReleaseBands(t *testing.T) {
 	}{
 		{"first escalation", requestWithContext("wraith", .5, .5, .5, .5, 1), qac.ActionContinue, .55},
 		{"upper escalation", requestWithContext("shade", .91, .86, .78, .93, 3), qac.ActionEscalate, .80},
-		{"release", requestWithContext("veil", .12, .40, .10, .08, 0), qac.ActionRelease, .25},
+		{"first release", requestWithContext("shade", .12, .40, .10, .08, 0), qac.ActionRelease, .25},
+		{"upper release", requestWithContext("veil", .12, .40, .10, .08, 0), qac.ActionRelease, .45},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {

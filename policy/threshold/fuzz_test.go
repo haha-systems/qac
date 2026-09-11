@@ -11,20 +11,33 @@ import (
 
 func FuzzDecisionNeverSelectsIneligible(f *testing.F) {
 	f.Add(uint8(0), uint8(1), uint8(2))
-	policy, err := threshold.New(threshold.Config{Hierarchy: []string{"wraith", "shade", "veil"}})
-	if err != nil {
-		f.Fatal(err)
+	policies := make([]*threshold.Policy, 0, 3)
+	for _, mode := range []threshold.IneligibleCurrentPolicy{
+		threshold.IneligibleCurrentStop,
+		threshold.IneligibleCurrentNearestEligible,
+		threshold.IneligibleCurrentLeastCostEligible,
+	} {
+		policy, err := threshold.New(threshold.Config{
+			Hierarchy:           []string{"wraith", "shade", "veil"},
+			OnCurrentIneligible: mode,
+		})
+		if err != nil {
+			f.Fatal(err)
+		}
+		policies = append(policies, policy)
 	}
 	f.Fuzz(func(t *testing.T, unavailable, disabled, cooldown uint8) {
-		decision, err := policy.Decide(context.Background(), generatedFuzzRequest(unavailable, disabled, cooldown))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if decision.To != "" && !decisionEligible(decision.Eligibility, decision.To) {
-			t.Fatalf("selected ineligible %q", decision.To)
-		}
-		if math.IsNaN(decision.Score) || math.IsInf(decision.Score, 0) {
-			t.Fatal("non-finite score")
+		for _, policy := range policies {
+			decision, err := policy.Decide(context.Background(), generatedFuzzRequest(unavailable, disabled, cooldown))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decision.To != "" && !decisionEligible(decision.Eligibility, decision.To) {
+				t.Fatalf("selected ineligible %q", decision.To)
+			}
+			if math.IsNaN(decision.Score) || math.IsInf(decision.Score, 0) {
+				t.Fatal("non-finite score")
+			}
 		}
 	})
 }

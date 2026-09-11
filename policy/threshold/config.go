@@ -187,7 +187,11 @@ func defaultThresholds(hierarchy []string, direction int) map[Transition]float64
 			thresholds[Transition{From: hierarchy[index], To: hierarchy[index+1]}] = value
 			continue
 		}
-		thresholds[Transition{From: hierarchy[index+1], To: hierarchy[index]}] = .25
+		value := .25
+		if index > 0 {
+			value = .45
+		}
+		thresholds[Transition{From: hierarchy[index+1], To: hierarchy[index]}] = value
 	}
 	return thresholds
 }

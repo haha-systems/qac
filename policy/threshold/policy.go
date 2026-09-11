@@ -26,6 +26,13 @@ func (policy *Policy) Decide(ctx context.Context, request qac.Request) (qac.Deci
 		To:          request.Context.CurrentResource,
 		Eligibility: eligibility,
 	}
+	currentIndex, currentFound := policy.indices[decision.From]
+	if !currentFound {
+		decision.Action = qac.ActionStop
+		decision.To = ""
+		decision.Reason = "stop " + decision.From + " -> : current resource is not in hierarchy"
+		return decision, nil
+	}
 	if !anyEligible(eligibility) {
 		decision.Action = qac.ActionStop
 		decision.To = ""
@@ -42,7 +49,6 @@ func (policy *Policy) Decide(ctx context.Context, request qac.Request) (qac.Deci
 		eligible[item.ResourceID] = item.Eligible
 	}
 
-	currentIndex := policy.indices[decision.From]
 	if !eligible[decision.From] {
 		return policy.decideIneligibleCurrent(decision, resources, currentIndex)
 	}
