@@ -37,6 +37,26 @@ func TestFactorsSumToScore(t *testing.T) {
 	}
 }
 
+func TestContinueRetainsUnmetUpwardEvaluation(t *testing.T) {
+	policy := mustPolicy(t, threshold.Config{Hierarchy: []string{"wraith", "shade", "veil"}})
+	decision, err := policy.Decide(context.Background(), requestWithContext("wraith", .5, .5, .5, .5, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Action != qac.ActionContinue || decision.To != "wraith" {
+		t.Fatalf("decision = %#v", decision)
+	}
+	if math.Abs(decision.Score-.395) > 1e-12 || decision.Threshold != .55 {
+		t.Fatalf("score, threshold = %.16f, %.16f; want .395, .55", decision.Score, decision.Threshold)
+	}
+	if len(decision.Factors) != 7 || math.Abs(sum(decision.Factors)-decision.Score) > 1e-12 {
+		t.Fatalf("factors = %#v, score = %.16f", decision.Factors, decision.Score)
+	}
+	if decision.Reason != "continue wraith -> wraith: score=0.395000 threshold=0.550000; factors=expected_gain=+0.175000,uncertainty=+0.125000,importance=+0.075000" {
+		t.Fatalf("reason = %q", decision.Reason)
+	}
+}
+
 func TestScoreUsesDestinationCostAndScarcityFactors(t *testing.T) {
 	policy := mustPolicy(t, threshold.Config{Hierarchy: []string{"wraith", "shade", "veil"}})
 	decision, err := policy.Decide(context.Background(), requestWithContext("wraith", .72, .50, .40, .76, 2))

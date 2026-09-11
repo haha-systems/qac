@@ -45,8 +45,8 @@ func (policy *Policy) Decide(_ context.Context, request qac.Request) (qac.Decisi
 		score, factors := policy.score(request.Context, resources[destination])
 		transition := Transition{From: decision.From, To: destination}
 		threshold := policy.escalationThresholds[transition]
+		decision.Score, decision.Threshold, decision.Factors = score, threshold, factors
 		if score >= threshold {
-			decision.Score, decision.Threshold, decision.Factors = score, threshold, factors
 			if eligible[destination] {
 				decision.Action, decision.To = qac.ActionEscalate, destination
 			}
@@ -68,7 +68,7 @@ func (policy *Policy) Decide(_ context.Context, request qac.Request) (qac.Decisi
 		return decision, nil
 	}
 
-	decision.Reason = reason(decision.Action, decision.From, decision.To, 0, 0, nil)
+	decision.Reason = reason(decision.Action, decision.From, decision.To, decision.Score, decision.Threshold, decision.Factors)
 	return decision, nil
 }
 
