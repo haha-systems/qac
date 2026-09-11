@@ -2,7 +2,9 @@ package threshold_test
 
 import (
 	"context"
+	"errors"
 	"math"
+	"reflect"
 	"testing"
 
 	"github.com/haha-systems/qac"
@@ -24,6 +26,95 @@ func TestShadeEscalatesToVeil(t *testing.T) {
 func TestVeilReleasesToShade(t *testing.T) {
 	policy := mustPolicy(t, threshold.Config{Hierarchy: []string{"wraith", "shade", "veil"}})
 	assertDecision(t, policy, requestWithContext("veil", .12, .40, .10, .08, 0), qac.ActionRelease, "shade")
+}
+
+// This fails if difficulty signals alone bypass the configured threshold.
+func TestDifficultyAloneDoesNotForceEscalation(t *testing.T) {
+	policy := mustPolicy(t, threshold.Config{Hierarchy: []string{"wraith", "shade", "veil"}})
+	assertDecision(t, policy, requestWithContext("shade", 1, 1, 1, 0, 3), qac.ActionContinue, "shade")
+}
+
+// This fails if the policy evaluates a score before replacing an ineligible current resource.
+func TestCurrentIneligibleUsesNearestEligible(t *testing.T) {
+	policy := mustPolicy(t, threshold.Config{
+		Hierarchy:           []string{"wraith", "shade", "veil"},
+		OnCurrentIneligible: threshold.IneligibleCurrentNearestEligible,
+	})
+	request := requestWithContext("shade", .5, .5, .5, .5, 0)
+	request.Budget.Resources["shade"] = qac.ResourceBudget{Enabled: false}
+	assertDecision(t, policy, request, qac.ActionRelease, "wraith")
+}
+
+// This fails if least-cost selection ignores the destination cost.
+func TestCurrentIneligibleUsesLeastCostEligible(t *testing.T) {
+	policy := mustPolicy(t, threshold.Config{
+		Hierarchy:           []string{"wraith", "shade", "veil"},
+		OnCurrentIneligible: threshold.IneligibleCurrentLeastCostEligible,
+	})
+	request := requestWithContext("shade", .5, .5, .5, .5, 0)
+	request.Budget.Resources["shade"] = qac.ResourceBudget{Enabled: false}
+	decision := assertAction(t, policy, request, qac.ActionRelease)
+	if decision.To != "wraith" || !hasReason(decision.Eligibility, "shade", "disabled") {
+		t.Fatalf("decision = %#v", decision)
+	}
+}
+
+// This fails if the least-cost rule does not use cost before hierarchy direction.
+func TestCurrentIneligibleLeastCostCanEscalate(t *testing.T) {
+	policy := mustPolicy(t, threshold.Config{
+		Hierarchy:           []string{"wraith", "shade", "veil"},
+		OnCurrentIneligible: threshold.IneligibleCurrentLeastCostEligible,
+	})
+	request := requestWithContext("shade", .5, .5, .5, .5, 0)
+	request.Budget.Resources["shade"] = qac.ResourceBudget{Enabled: false}
+	request.Resources[0].Cost = .9
+	request.Resources[2].Cost = .1
+	assertDecision(t, policy, request, qac.ActionEscalate, "veil")
+}
+
+// This fails if least-cost ties skip scarcity or hierarchy-index tie-breaking.
+func TestCurrentIneligibleLeastCostBreaksTiesDeterministically(t *testing.T) {
+	policy := mustPolicy(t, threshold.Config{
+		Hierarchy:           []string{"wraith", "shade", "veil"},
+		OnCurrentIneligible: threshold.IneligibleCurrentLeastCostEligible,
+	})
+	request := requestWithContext("shade", .5, .5, .5, .5, 0)
+	request.Budget.Resources["shade"] = qac.ResourceBudget{Enabled: false}
+	request.Resources[0].Cost, request.Resources[2].Cost = .5, .5
+	request.Resources[0].Scarcity, request.Resources[2].Scarcity = .9, .1
+	assertDecision(t, policy, request, qac.ActionEscalate, "veil")
+
+	request.Resources[0].Scarcity = .1
+	assertDecision(t, policy, request, qac.ActionRelease, "wraith")
+}
+
+// This fails if the default stop policy silently retains an ineligible current resource.
+func TestCurrentIneligibleStops(t *testing.T) {
+	policy := mustPolicy(t, threshold.Config{Hierarchy: []string{"wraith", "shade", "veil"}})
+	request := generatedValidRequest("shade")
+	request.Budget.Resources["shade"] = qac.ResourceBudget{Enabled: false}
+	assertDecision(t, policy, request, qac.ActionStop, "")
+}
+
+// This fails if cancellation is delayed until after request validation.
+func TestDecideReturnsCanceledContextUnchanged(t *testing.T) {
+	policy := mustPolicy(t, threshold.Config{Hierarchy: []string{"wraith", "shade"}})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	decision, err := policy.Decide(ctx, qac.Request{})
+	if !errors.Is(err, context.Canceled) || err != ctx.Err() {
+		t.Fatalf("error = %v, want unchanged context cancellation", err)
+	}
+	if !reflect.DeepEqual(decision, qac.Decision{}) {
+		t.Fatalf("decision = %#v, want empty decision", decision)
+	}
+}
+
+// This fails if evaluations on adjacent levels can cause an oscillating transition.
+func TestHysteresisPreventsOscillation(t *testing.T) {
+	policy := mustPolicy(t, threshold.Config{Hierarchy: []string{"wraith", "shade", "veil"}})
+	assertDecision(t, policy, requestWithContext("shade", .60, .60, .60, .60, 0), qac.ActionContinue, "shade")
+	assertDecision(t, policy, requestWithContext("veil", .60, .60, .60, .60, 0), qac.ActionContinue, "veil")
 }
 
 func TestFactorsSumToScore(t *testing.T) {

@@ -11,7 +11,10 @@ import (
 )
 
 // Decide deterministically selects an adjacent eligible resource transition.
-func (policy *Policy) Decide(_ context.Context, request qac.Request) (qac.Decision, error) {
+func (policy *Policy) Decide(ctx context.Context, request qac.Request) (qac.Decision, error) {
+	if err := ctx.Err(); err != nil {
+		return qac.Decision{}, err
+	}
 	if err := qac.ValidateRequest(request); err != nil {
 		return qac.Decision{}, err
 	}
@@ -40,6 +43,9 @@ func (policy *Policy) Decide(_ context.Context, request qac.Request) (qac.Decisi
 	}
 
 	currentIndex := policy.indices[decision.From]
+	if !eligible[decision.From] {
+		return policy.decideIneligibleCurrent(decision, resources, currentIndex)
+	}
 	if currentIndex+1 < len(policy.hierarchy) {
 		destination := policy.hierarchy[currentIndex+1]
 		score, factors := policy.score(request.Context, resources[destination])
@@ -70,6 +76,72 @@ func (policy *Policy) Decide(_ context.Context, request qac.Request) (qac.Decisi
 
 	decision.Reason = reason(decision.Action, decision.From, decision.To, decision.Score, decision.Threshold, decision.Factors)
 	return decision, nil
+}
+
+func (policy *Policy) decideIneligibleCurrent(decision qac.Decision, resources map[string]qac.Resource, currentIndex int) (qac.Decision, error) {
+	if policy.onCurrentIneligible == IneligibleCurrentStop {
+		decision.Action = qac.ActionStop
+		decision.To = ""
+		decision.Reason = "stop " + decision.From + " -> : current resource is ineligible"
+		return decision, nil
+	}
+
+	type candidate struct {
+		id    string
+		index int
+	}
+	candidates := make([]candidate, 0, len(decision.Eligibility))
+	for _, item := range decision.Eligibility {
+		if !item.Eligible {
+			continue
+		}
+		index, found := policy.indices[item.ResourceID]
+		if found {
+			candidates = append(candidates, candidate{id: item.ResourceID, index: index})
+		}
+	}
+	if len(candidates) == 0 {
+		decision.Action = qac.ActionStop
+		decision.To = ""
+		decision.Reason = "stop " + decision.From + " -> : no eligible resources"
+		return decision, nil
+	}
+
+	sort.Slice(candidates, func(left, right int) bool {
+		if policy.onCurrentIneligible == IneligibleCurrentLeastCostEligible {
+			leftResource, rightResource := resources[candidates[left].id], resources[candidates[right].id]
+			if leftResource.Cost != rightResource.Cost {
+				return leftResource.Cost < rightResource.Cost
+			}
+			if leftResource.Scarcity != rightResource.Scarcity {
+				return leftResource.Scarcity < rightResource.Scarcity
+			}
+			return candidates[left].index < candidates[right].index
+		}
+		leftDistance := abs(candidates[left].index - currentIndex)
+		rightDistance := abs(candidates[right].index - currentIndex)
+		if leftDistance != rightDistance {
+			return leftDistance < rightDistance
+		}
+		return candidates[left].index < candidates[right].index
+	})
+
+	selected := candidates[0]
+	decision.To = selected.id
+	if selected.index > currentIndex {
+		decision.Action = qac.ActionEscalate
+	} else {
+		decision.Action = qac.ActionRelease
+	}
+	decision.Reason = fmt.Sprintf("%s %s -> %s: current resource is ineligible", decision.Action, decision.From, decision.To)
+	return decision, nil
+}
+
+func abs(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
 }
 
 func reason(action qac.Action, from, to string, score, threshold float64, factors []qac.Factor) string {
