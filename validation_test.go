@@ -53,6 +53,17 @@ func TestValidateRequestRejectsInvalidSignal(t *testing.T) {
 	}
 }
 
+func TestValidateRequestChecksSignalsInFixedOrder(t *testing.T) {
+	req := validRequest()
+	req.Context.Uncertainty = -1
+	req.Context.Importance = 2
+
+	err := qac.ValidateRequest(req)
+	if err == nil || !strings.Contains(err.Error(), "uncertainty") {
+		t.Fatalf("error = %v, want uncertainty validation error", err)
+	}
+}
+
 func TestValidateRequestRejectsNegativeFailures(t *testing.T) {
 	req := validRequest()
 	req.Context.FailedAttempts = -1

@@ -39,15 +39,17 @@ func ValidateRequest(request Request) error {
 		return fmt.Errorf("current resource %q is absent", request.Context.CurrentResource)
 	}
 
-	for name, value := range map[string]float64{
-		"uncertainty":   request.Context.Uncertainty,
-		"importance":    request.Context.Importance,
-		"novelty":       request.Context.Novelty,
-		"expected gain": request.Context.ExpectedGain,
-	} {
-		if err := validateNormalized(name, value); err != nil {
-			return err
-		}
+	if err := validateNormalized("uncertainty", request.Context.Uncertainty); err != nil {
+		return err
+	}
+	if err := validateNormalized("importance", request.Context.Importance); err != nil {
+		return err
+	}
+	if err := validateNormalized("novelty", request.Context.Novelty); err != nil {
+		return err
+	}
+	if err := validateNormalized("expected gain", request.Context.ExpectedGain); err != nil {
+		return err
 	}
 	if request.Context.FailedAttempts < 0 {
 		return fmt.Errorf("failed attempts must not be negative")
