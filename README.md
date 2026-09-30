@@ -89,10 +89,52 @@ type Policy interface {
 Use `threshold.New` for the built-in policy, or provide another implementation
 that returns the same inspectable decision data.
 
+## Jev client
+
+The optional `jev` package sends typed Choice, Score, and Noul questions to the
+TypeSafe System One API. It returns the model's probabilities and confidence;
+QAC callers remain responsible for how to use those values.
+
+Set `TYPESAFE_API_KEY` and run the client example:
+
+```sh
+go run ./examples/jev-client
+```
+
+The client uses `jev-latest` and `https://api.typesafe.ai` by default. The API
+schema allows one or more Score levels. The guide recommends two or more, caps
+Score at 10 levels, and caps Choice at 255 options; the client follows the
+published schema when it differs from that guidance.
+
+For authenticated integration checks, also set `JEV_LIVE_TEST=1` and run
+`go test ./jev -run TestLiveAPI -count=1`. Normal tests use local HTTP servers.
+
+## Jev policy
+
+`policy/jev` implements `qac.Policy`. It uses the hierarchy and rules in a
+`threshold.Config` to enforce eligibility and to make a deterministic decision
+when Jev's call fails, times out, returns an invalid answer, or has confidence
+below the configured floor. The default floor is `.5`; the default call limit
+is five seconds. Jev may choose any eligible resource in the hierarchy, and
+QAC maps its position to `continue`, `escalate`, or `release`.
+
+The policy sends numeric task signals and only the `description` entry from
+context and resource metadata. It sends eligible resource IDs, their
+descriptions, capability, cost, and scarcity. It sends no other metadata or
+budget values. If more than 255 resources are eligible, it uses the threshold
+policy without calling Jev. A returned decision includes Jev's model,
+confidence, and full probability distribution. An empty model identifies a
+deterministic threshold decision.
+
+The `examples/jev-client` program shows the policy integration. Local policy
+tests use a fake Jev client; they do not call the network. To run the live
+incident-routing scenario with Luna, Sol, and Astra, set `TYPESAFE_API_KEY`
+and `JEV_LIVE_TEST=1`, then run `go test ./policy/jev -run TestLiveResourceSelection -count=1 -v`.
+
 ## Non-goals
 
-QAC does not call models or tools, read configuration, perform network or file
-operations, log, mutate budgets, or encode provider-specific workflows.
+The core QAC policies do not mutate budgets. The threshold policy does not make
+network calls; the optional Jev client and policy do.
 
 ## License
 

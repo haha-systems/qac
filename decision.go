@@ -21,4 +21,7 @@ type Decision struct {
 	Factors          []Factor
 	Reason           string
 	Eligibility      []Eligibility
+	Model            string             // Model that made a probabilistic choice; empty for deterministic decisions.
+	Confidence       float64            // Confidence for the selected choice; zero when the policy has none.
+	Probabilities    map[string]float64 // Choice probabilities keyed by resource ID; nil when unavailable.
 }
